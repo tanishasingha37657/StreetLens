@@ -7,7 +7,13 @@ StreetLens bridges this gap by integrating ground photography directly alongside
 
 ---
 
-## 🚀 Live Demo & How to Run
+## 🌐 Live Deployed Application
+
+👉 **Live GitHub Pages URL:** [https://tanishasingha37657.github.io/StreetLens/](https://tanishasingha37657.github.io/StreetLens/)
+
+---
+
+## 🚀 How to Run Locally
 
 1. Open your terminal in this directory:
    ```bash
