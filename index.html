@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="StreetLens for OpenStreetMap - Ground-level street imagery viewer integrated directly into OpenStreetMap browsing.">
+  <title>OpenStreetMap with StreetLens | Ground-Level Imagery Integration</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Leaflet CSS for OpenStreetMap -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Custom Design System CSS -->
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+
+  <!-- Top Global Error Notification Banner -->
+  <div id="global-error-banner" class="global-error-banner hidden" role="alert">
+    <div class="banner-content">
+      <svg class="w-5 h-5 banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <span id="error-banner-message">An unexpected error occurred.</span>
+      <button id="btn-error-retry" class="btn btn-sm btn-outline-white hidden">Retry</button>
+      <button id="btn-error-dismiss" class="banner-close-btn" aria-label="Dismiss banner">&times;</button>
+    </div>
+  </div>
+
+  <!-- Main Application Header -->
+  <header class="app-header">
+    <div class="header-left">
+      <!-- OSM & StreetLens Brand -->
+      <a href="#" class="brand-link" aria-label="StreetLens Home">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="osm-globe">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          <div class="brand-lens-dot"></div>
+        </div>
+        <div class="brand-text">
+          <span class="osm-title">OpenStreetMap</span>
+          <span class="streetlens-badge">StreetLens™</span>
+        </div>
+      </a>
+
+      <!-- Quick Teleport to Featured Surveyed Cities -->
+      <nav class="quick-cities-nav" aria-label="Quick Survey Locations">
+        <span class="nav-label">Surveys:</span>
+        <button class="city-pill is-active" data-city-id="london">London</button>
+        <button class="city-pill" data-city-id="bengaluru">Bengaluru</button>
+        <button class="city-pill" data-city-id="paris">Paris</button>
+        <button class="city-pill" data-city-id="tokyo">Tokyo</button>
+        <button class="city-pill" data-city-id="newyork">New York</button>
+        <span id="current-city-label" class="sr-only">London, UK</span>
+      </nav>
+    </div>
+
+    <div class="header-right">
+      <!-- Street-Level Entry Point Toggle Button (Required by DOCX specification) -->
+      <button id="btn-toggle-streetlens" class="btn btn-streetlens is-active" aria-pressed="true" title="Toggle ground-level coverage overlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        <span>StreetLens: <strong class="status-text">Active</strong></span>
+      </button>
+
+      <!-- Simulation Mode Toggle (Allows testing coverage anywhere) -->
+      <label class="toggle-control" title="Toggle universal preview for testing any global coordinate">
+        <input type="checkbox" id="toggle-simulation-mode">
+        <span class="toggle-track"></span>
+        <span class="toggle-label">Demo Sim</span>
+      </label>
+
+      <!-- Request Ground Coverage / Report Modal Trigger -->
+      <button id="btn-open-request-modal" class="btn btn-secondary" title="Report missing imagery or request volunteer capture">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+          <path d="M12 5v14M5 12h14"></path>
+        </svg>
+        <span>Request Imagery</span>
+      </button>
+
+      <!-- Theme Switcher (Dark/Light mode) -->
+      <button id="btn-toggle-theme" class="icon-btn" aria-label="Toggle dark/light theme" title="Toggle color theme">
+        <svg class="sun-icon w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+        </svg>
+        <svg class="moon-icon w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Interactive Search Bar with Live Validation & Debouncing -->
+  <section class="search-toolbar-section" aria-label="Location Search and Filters">
+    <div class="search-wrapper">
+      <form id="search-form" class="search-form" novalidate>
+        <div class="search-input-group">
+          <svg class="search-icon w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            id="search-input"
+            class="search-input"
+            placeholder="Search address, landmark, or GPS coordinates (e.g., Westminster, London or 12.9738, 77.6080)..."
+            autocomplete="off"
+            aria-describedby="search-feedback"
+            required
+          />
+          <button type="button" id="search-clear-btn" class="search-clear-btn hidden" aria-label="Clear search input">&times;</button>
+        </div>
+
+        <div class="search-radius-group">
+          <label for="search-radius" class="radius-label">Survey Radius:</label>
+          <select id="search-radius" class="radius-select">
+            <option value="0.5">500 m</option>
+            <option value="1.5" selected>1.5 km</option>
+            <option value="3.0">3.0 km</option>
+            <option value="5.0">5.0 km</option>
+          </select>
+        </div>
+
+        <button type="submit" id="search-submit-btn" class="btn btn-primary search-submit-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <span>Search</span>
+        </button>
+      </form>
+
+      <!-- Real-Time Validation Feedback Output (Accessible ARIA live region) -->
+      <div id="search-feedback" class="form-feedback hidden" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- Responsive Side-by-Side Application Workspace (DOCX: grid grid-cols-1 lg:grid-cols-2) -->
+  <main id="app-workspace" class="workspace-grid">
+    
+    <!-- LEFT PANEL: OpenStreetMap Interactive Map -->
+    <section id="map-section" class="map-container-section" aria-label="Interactive OpenStreetMap">
+      <div id="osm-map-container" class="osm-map"></div>
+
+      <!-- Floating Map Legend & Guidance Card -->
+      <div class="map-floating-card">
+        <div class="card-header-sm">
+          <span class="dot-indicator pulse"></span>
+          <span>OpenStreetMap Live Ground Coverage</span>
+        </div>
+        <p class="card-subtext">Click any point on the map or select a camera marker to inspect street imagery.</p>
+        <div class="map-legend-items">
+          <span class="legend-item"><span class="legend-dot marker-dot"></span> Camera Point</span>
+          <span class="legend-item"><span class="legend-line line-dot"></span> Surveyed Path</span>
+          <span class="legend-item"><span class="legend-dot camera-dot"></span> Active Pegman</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: StreetLens Ground-Level Viewer (DOCX: side-by-side desktop, stacked mobile) -->
+    <section id="streetlens-panel" class="streetlens-panel-section" aria-label="StreetLens Ground-Level Imagery Viewer">
+      
+      <!-- Loading Shimmer Skeleton Overlay -->
+      <div id="streetlens-loading" class="streetlens-loading-overlay hidden" aria-live="polite">
+        <div class="skeleton-shimmer">
+          <div class="loading-spinner"></div>
+          <p class="loading-text">Fetching ground-level imagery & OpenStreetMap metadata...</p>
+        </div>
+      </div>
+
+      <!-- ACTIVE STREET VIEWER (DOCX: <figure>, <img>, <figcaption>, navigation <button>) -->
+      <section id="streetlens-viewer-section" class="viewer-content">
+        
+        <!-- Viewer Top Control Header -->
+        <div class="viewer-header">
+          <div class="viewer-title-group">
+            <div class="location-badge-row">
+              <span id="sequence-badge" class="badge badge-accent">Frame #1</span>
+              <span id="simulated-badge" class="badge badge-warning hidden">Simulated Preview</span>
+              <span class="badge badge-outline">CC-BY-SA 4.0</span>
+            </div>
+            <h2 id="meta-street-name" class="street-name-title">Parliament Street</h2>
+            <p id="meta-location" class="location-subtext">Westminster, London, United Kingdom</p>
+          </div>
+
+          <div class="viewer-actions">
+            <button id="btn-fullscreen-toggle" class="icon-btn-ghost" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+              </svg>
+            </button>
+            <button id="btn-close-viewer" class="icon-btn-ghost" title="Collapse Viewer" aria-label="Collapse Viewer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 360-Degree Interactive Panning Viewport -->
+        <div id="street-viewport" class="street-viewport" title="Click and drag horizontally to pan ground view 360°">
+          
+          <figure id="street-figure" class="street-figure">
+            <img
+              id="street-image"
+              class="street-image"
+              src="https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1600&q=80"
+              alt="Street-level ground photograph"
+              draggable="false"
+            />
+          </figure>
+
+          <!-- Interactive Compass & Direction Indicator -->
+          <div class="compass-widget" title="Camera Field of View orientation">
+            <div id="compass-dial" class="compass-dial">
+              <span class="compass-north">N</span>
+              <div class="compass-needle"></div>
+            </div>
+            <span id="heading-value" class="heading-label">340° N</span>
+          </div>
+
+          <!-- Pan Drag Guidance Watermark -->
+          <div class="drag-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+              <path d="M5 9l-3 3 3 3M19 9l3 3-3 3M2 12h20"></path>
+            </svg>
+            <span>Drag to rotate panorama</span>
+          </div>
+
+          <!-- Sequence Step Controls (Previous / Next frame buttons) -->
+          <div class="street-navigation-controls" aria-label="Sequence Stepping Controls">
+            <button id="btn-prev-frame" class="btn btn-nav" aria-label="Step to previous street frame" title="Previous frame along street (Left Arrow)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Previous</span>
+            </button>
+
+            <button id="btn-auto-tour" class="btn btn-nav btn-tour" aria-label="Toggle virtual street drive" title="Auto-advance along surveyed route (Spacebar)">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <span>Auto-Tour</span>
+            </button>
+
+            <button id="btn-next-frame" class="btn btn-nav" aria-label="Step to next street frame" title="Next frame along street (Right Arrow)">
+              <span>Next</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metadata & Attribution Footer (<figcaption> as required by DOCX) -->
+        <figcaption class="viewer-attribution">
+          <div class="meta-grid">
+            <div class="meta-item">
+              <span class="meta-label">Capture Date:</span>
+              <span id="meta-capture-date" class="meta-val">2024-07-18 10:45 UTC</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Contributor:</span>
+              <span id="meta-contributor" class="meta-val">@osm_mapper_london</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Camera Rig:</span>
+              <span id="meta-device" class="meta-val">Insta360 Pro 2 / 8K</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Attribution:</span>
+              <span class="meta-val">OpenStreetMap & Mapillary Contributors</span>
+            </div>
+          </div>
+        </figcaption>
+
+      </section>
+
+      <!-- EMPTY STATE SECTION (DOCX specification: <section role="status"> rounded-lg border p-4) -->
+      <section role="status" id="streetlens-empty-state" class="empty-state hidden">
+        <div class="empty-state-card">
+          <div class="empty-state-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="w-12 h-12">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <line x1="1" y1="1" x2="23" y2="23"></line>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+          </div>
+          <h3 class="empty-state-title">No Ground-Level Imagery Available Here</h3>
+          <p id="empty-state-desc" class="empty-state-text">
+            StreetLens relies on open community contributions, Mapillary surveys, and open photogrammetry. No verified ground-level photography exists within the selected survey radius.
+          </p>
+
+          <div class="empty-state-actions">
+            <button id="btn-empty-request-coverage" class="btn btn-primary">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+              <span>Request Coverage for this Coordinate</span>
+            </button>
+          </div>
+
+          <div class="empty-state-teleport">
+            <span class="teleport-label">Or teleport to an active survey corridor:</span>
+            <div class="teleport-buttons">
+              <button class="pill-btn" onclick="document.querySelector('[data-city-id=london]').click()">London Westminster</button>
+              <button class="pill-btn" onclick="document.querySelector('[data-city-id=bengaluru]').click()">Bengaluru Brigade Rd</button>
+              <button class="pill-btn" onclick="document.querySelector('[data-city-id=paris]').click()">Paris Champs-Élysées</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </section>
+
+  </main>
+
+  <!-- COVERAGE REQUEST MODAL FORM (Full client-side validation & feedback) -->
+  <div id="coverage-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="modal-title" class="modal-title">Request StreetLens Imagery Coverage</h3>
+          <p class="modal-subtitle">Submit missing street requests or report imagery issues to the OpenStreetMap community.</p>
+        </div>
+        <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <form id="coverage-request-form" class="modal-form" novalidate>
+        <!-- Field 1: Road / Landmark Name -->
+        <div class="form-group">
+          <label for="req-location-name" class="form-label">Road or Landmark Name <span class="req-star">*</span></label>
+          <input
+            type="text"
+            id="req-location-name"
+            class="form-control"
+            placeholder="e.g., Hosur Road, Koramangala or Oxford Street"
+            required
+            minlength="3"
+            maxlength="60"
+          />
+          <span id="req-location-name-error" class="field-error hidden"></span>
+        </div>
+
+        <!-- Field 2: GPS Coordinates -->
+        <div class="form-group">
+          <label for="req-coordinates" class="form-label">GPS Coordinates (Lat, Lon) <span class="req-star">*</span></label>
+          <input
+            type="text"
+            id="req-coordinates"
+            class="form-control"
+            placeholder="e.g., 12.9352, 77.6245"
+            required
+          />
+          <span class="field-hint">Latitude and Longitude in decimal degrees.</span>
+          <span id="req-coordinates-error" class="field-error hidden"></span>
+        </div>
+
+        <!-- Field 3: User Email -->
+        <div class="form-group">
+          <label for="req-email" class="form-label">Contributor Email <span class="req-star">*</span></label>
+          <input
+            type="email"
+            id="req-email"
+            class="form-control"
+            placeholder="mapper@example.com"
+            required
+          />
+          <span class="field-hint">We'll notify you when community imagery is submitted.</span>
+          <span id="req-email-error" class="field-error hidden"></span>
+        </div>
+
+        <!-- Field 4: Request Category -->
+        <div class="form-group">
+          <label for="req-category" class="form-label">Request Category</label>
+          <select id="req-category" class="form-control">
+            <option value="missing_imagery">Missing Ground Imagery (No Photos)</option>
+            <option value="outdated_imagery">Outdated Streetscape / Road Changed</option>
+            <option value="privacy_blur">Privacy Blur / Redaction Request</option>
+            <option value="quality_issue">Image Distortion / Glitch Report</option>
+          </select>
+        </div>
+
+        <!-- Field 5: Description & Notes -->
+        <div class="form-group">
+          <label for="req-notes" class="form-label">Description & Context <span class="req-star">*</span></label>
+          <textarea
+            id="req-notes"
+            class="form-control textarea"
+            rows="3"
+            placeholder="Describe specific landmarks, intersections, or notes for survey volunteers (min 10 characters)..."
+            required
+            minlength="10"
+            maxlength="300"
+          ></textarea>
+          <div class="char-counter-row">
+            <span id="char-counter" class="char-counter">300 characters remaining</span>
+            <span id="req-notes-error" class="field-error hidden"></span>
+          </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="modal-actions">
+          <button type="button" id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="coverage-submit-btn" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>
+            </svg>
+            <span>Submit Request</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Footer with CIA-2 Academic Requirements Mapping & Keyboard Shortcuts -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <span class="footer-badge">FSD CIA-2 Implementation</span>
+      <span>StreetLens for OpenStreetMap &bull; Solving Ground-Level Imagery Accessibility</span>
+    </div>
+    <div class="footer-shortcuts">
+      <span class="shortcut-tag"><kbd>&larr;</kbd><kbd>&rarr;</kbd> Step Sequence</span>
+      <span class="shortcut-tag"><kbd>Space</kbd> Auto-Tour</span>
+      <span class="shortcut-tag"><kbd>Esc</kbd> Collapse Viewer</span>
+    </div>
+  </footer>
+
+  <!-- Leaflet JavaScript library -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  <!-- Application Modular Scripts -->
+  <script type="module" src="./js/app.js"></script>
+
+</body>
+</html>
