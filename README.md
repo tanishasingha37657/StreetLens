@@ -46,7 +46,7 @@ StreetLens bridges this gap by integrating ground photography directly alongside
 
 The dataset [`data/street_imagery.json`](file:///d:/uni/christ/trim2/FSD/MT/data/street_imagery.json) includes multi-frame street walking sequences for:
 - 🇬🇧 **London, UK:** Parliament Street, Westminster & Whitehall
-- 🇮🇳 **Bengaluru, India:** MG Road, Brigade Road Junction & Cubbon Park
+- 🇮🇳 **Bengaluru, India:** MG Road Boulevard, Brigade Road Junction & Rex Walk Retail Corridor
 - 🇫🇷 **Paris, France:** Avenue des Champs-Élysées & Arc de Triomphe
 - 🇯🇵 **Tokyo, Japan:** Shibuya Scramble Crossing & Center-Gai
 - 🇺🇸 **New York, USA:** Times Square, Duffy Square & Broadway
