@@ -74,12 +74,14 @@
         <span>StreetLens: <strong class="status-text">Active</strong></span>
       </button>
 
-      <!-- Simulation Mode Toggle (Allows testing coverage anywhere) -->
-      <label class="toggle-control" title="Toggle universal preview for testing any global coordinate">
-        <input type="checkbox" id="toggle-simulation-mode">
-        <span class="toggle-track"></span>
-        <span class="toggle-label">Demo Sim</span>
-      </label>
+      <!-- Mapillary API Token Configuration Modal Trigger -->
+      <button id="btn-open-mapillary-modal" class="btn btn-secondary mapillary-btn" title="Connect your Mapillary client token (street-level photos come from Mapillary)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Mapillary: <strong id="mapillary-header-status">Not connected</strong></span>
+      </button>
 
       <!-- Request Ground Coverage / Report Modal Trigger -->
       <button id="btn-open-request-modal" class="btn btn-secondary" title="Report missing imagery or request volunteer capture">
@@ -165,12 +167,12 @@
       <div class="map-floating-card">
         <div class="card-header-sm">
           <span class="dot-indicator pulse"></span>
-          <span>OpenStreetMap Live Ground Coverage</span>
+          <span>Mapillary Street-Level Coverage</span>
         </div>
-        <p class="card-subtext">Click any point on the map or select a camera marker to inspect street imagery.</p>
+        <p class="card-subtext">Zoom in to see Mapillary photo points. Click the map or a green dot to view the street photo.</p>
         <div class="map-legend-items">
-          <span class="legend-item"><span class="legend-dot marker-dot"></span> Camera Point</span>
-          <span class="legend-item"><span class="legend-line line-dot"></span> Surveyed Path</span>
+          <span class="legend-item"><span class="legend-dot marker-dot"></span> Mapillary Photo</span>
+          <span class="legend-item"><span class="legend-line line-dot"></span> Capture Sequence</span>
           <span class="legend-item"><span class="legend-dot camera-dot"></span> Active Pegman</span>
         </div>
       </div>
@@ -195,7 +197,7 @@
           <div class="viewer-title-group">
             <div class="location-badge-row">
               <span id="sequence-badge" class="badge badge-accent">Frame #1</span>
-              <span id="simulated-badge" class="badge badge-warning hidden">Simulated Preview</span>
+              <span id="mapillary-badge" class="badge badge-mapillary">Mapillary</span>
               <span class="badge badge-outline">CC-BY-SA 4.0</span>
             </div>
             <h2 id="meta-street-name" class="street-name-title">Parliament Street</h2>
@@ -224,7 +226,6 @@
             <img
               id="street-image"
               class="street-image"
-              src="https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1600&q=80"
               alt="Street-level ground photograph"
               draggable="false"
             />
@@ -277,19 +278,19 @@
           <div class="meta-grid">
             <div class="meta-item">
               <span class="meta-label">Capture Date:</span>
-              <span id="meta-capture-date" class="meta-val">2024-07-18 10:45 UTC</span>
+              <span id="meta-capture-date" class="meta-val">&ndash;</span>
             </div>
             <div class="meta-item">
               <span class="meta-label">Contributor:</span>
-              <span id="meta-contributor" class="meta-val">@osm_mapper_london</span>
+              <span id="meta-contributor" class="meta-val">&ndash;</span>
             </div>
             <div class="meta-item">
-              <span class="meta-label">Camera Rig:</span>
-              <span id="meta-device" class="meta-val">Insta360 Pro 2 / 8K</span>
+              <span class="meta-label">Camera:</span>
+              <span id="meta-device" class="meta-val">&ndash;</span>
             </div>
             <div class="meta-item">
               <span class="meta-label">Attribution:</span>
-              <span class="meta-val">OpenStreetMap & Mapillary Contributors</span>
+              <span class="meta-val">Imagery &copy; Mapillary contributors, CC-BY-SA 4.0 &middot; <a id="meta-mapillary-link" class="hidden" href="https://www.mapillary.com" target="_blank" rel="noopener">View on Mapillary &nearr;</a></span>
             </div>
           </div>
         </figcaption>
@@ -306,12 +307,15 @@
               <circle cx="12" cy="13" r="4"></circle>
             </svg>
           </div>
-          <h3 class="empty-state-title">No Ground-Level Imagery Available Here</h3>
+          <h3 id="empty-state-title" class="empty-state-title">No Ground-Level Imagery Available Here</h3>
           <p id="empty-state-desc" class="empty-state-text">
-            StreetLens relies on open community contributions, Mapillary surveys, and open photogrammetry. No verified ground-level photography exists within the selected survey radius.
+            StreetLens shows street-level photos contributed to Mapillary. None were found within the search radius of this point.
           </p>
 
           <div class="empty-state-actions">
+            <button id="btn-empty-connect-mapillary" class="btn btn-primary hidden">
+              <span>Connect Mapillary</span>
+            </button>
             <button id="btn-empty-request-coverage" class="btn btn-primary">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
                 <path d="M12 5v14M5 12h14"></path>
@@ -321,7 +325,7 @@
           </div>
 
           <div class="empty-state-teleport">
-            <span class="teleport-label">Or teleport to an active survey corridor:</span>
+            <span class="teleport-label">Or jump to a well-covered city:</span>
             <div class="teleport-buttons">
               <button class="pill-btn" onclick="document.querySelector('[data-city-id=london]').click()">London Westminster</button>
               <button class="pill-btn" onclick="document.querySelector('[data-city-id=bengaluru]').click()">Bengaluru Brigade Rd</button>
@@ -430,6 +434,64 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MAPILLARY API CONFIGURATION MODAL -->
+  <div id="mapillary-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="mapillary-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h3 id="mapillary-modal-title" class="modal-title">Mapillary API Configuration</h3>
+          <p class="modal-subtitle">StreetLens loads all street-level photos live from Mapillary. A free client token is required.</p>
+        </div>
+        <button id="mapillary-modal-close-btn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="modal-content-body">
+        <div class="info-callout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="callout-icon">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <div class="callout-text">
+            <strong>How to get a free Mapillary Client Token:</strong>
+            <ol class="callout-list">
+              <li>Log in or create a free account on the <a href="https://www.mapillary.com/dashboard/developers" target="_blank" rel="noopener">Mapillary Developer Dashboard &nearr;</a></li>
+              <li>Click <em>Register Application</em> (e.g., application name: <code>StreetLens</code>).</li>
+              <li>Copy your Client Access Token (starts with <code>MLY|...</code>) and paste it below.</li>
+            </ol>
+          </div>
+        </div>
+
+        <form id="mapillary-token-form" class="modal-form" novalidate>
+          <div class="form-group">
+            <label for="mapillary-token-input" class="form-label">Mapillary Client Access Token (v4)</label>
+            <input
+              type="text"
+              id="mapillary-token-input"
+              class="form-control font-mono"
+              placeholder="MLY|1234567890|abcdef..."
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span class="field-hint">The token is saved only in this browser and is sent only to graph.mapillary.com.</span>
+          </div>
+
+          <div id="mapillary-feedback" class="form-feedback hidden" role="status"></div>
+
+          <div class="modal-actions">
+            <button type="button" id="btn-clear-mapillary-token" class="btn btn-secondary">Remove saved token</button>
+            <button type="submit" id="btn-save-mapillary-token" class="btn btn-primary btn-save-mly">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Save & Connect</span>
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 

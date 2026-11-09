@@ -610,13 +610,13 @@ a {
   border-radius: 50%;
 }
 
-.marker-dot { background: var(--osm-blue); }
+.marker-dot { background: #05cb63; }
 .camera-dot { background: #f59e0b; }
 .line-dot {
   width: 16px;
   height: 4px;
   border-radius: 2px;
-  background: #0284c7;
+  background: #05cb63;
 }
 
 .dot-indicator.pulse {
@@ -1434,3 +1434,89 @@ a {
     display: none;
   }
 }
+
+/* ============================================================
+   MAPILLARY API UI STYLING & STATUS TOKENS
+   ============================================================ */
+.mapillary-btn {
+  border-color: rgba(5, 203, 99, 0.4) !important;
+}
+
+.mapillary-btn:hover {
+  border-color: #05cb63 !important;
+  background: rgba(5, 203, 99, 0.12) !important;
+}
+
+#mapillary-header-status.is-active {
+  color: #05cb63;
+  text-shadow: 0 0 8px rgba(5, 203, 99, 0.4);
+}
+
+.badge-mapillary {
+  background: #05cb63 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 0 8px rgba(5, 203, 99, 0.35);
+}
+
+.streetlens-marker-icon.is-mapillary {
+  background: #05cb63 !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(5, 203, 99, 0.8) !important;
+}
+
+.info-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: rgba(5, 203, 99, 0.08);
+  border: 1px solid rgba(5, 203, 99, 0.28);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.25rem;
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+}
+
+.callout-icon {
+  color: #05cb63;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.callout-list {
+  margin: 0.35rem 0 0 1.2rem;
+  padding: 0;
+  line-height: 1.6;
+}
+
+.callout-list a {
+  color: #05cb63;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.callout-list a:hover {
+  color: #10b981;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.02em;
+}
+
+.btn-save-mly {
+  background: #05cb63 !important;
+  border-color: #05cb63 !important;
+  color: #ffffff !important;
+}
+
+.btn-save-mly:hover {
+  background: #04b356 !important;
+  border-color: #04b356 !important;
+  box-shadow: 0 0 12px rgba(5, 203, 99, 0.4) !important;
+}
+

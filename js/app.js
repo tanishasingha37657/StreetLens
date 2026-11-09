@@ -4,7 +4,7 @@
  * Manages global application state, theme switching, demo teleports, and error handling.
  */
 
-import { StreetLensAPI } from './api.js';
+import { StreetLensAPI, MapillaryService, MapillaryError } from './api.js';
 import { StreetLensMap } from './map.js';
 import { StreetLensViewer } from './streetlens.js';
 import { FormValidationManager } from './form-validation.js';
@@ -16,8 +16,8 @@ class StreetLensApp {
     this.formManager = null;
     this.dataset = null;
     this.currentCityId = 'london';
-    this.simulationMode = false;
     this.streetLensEnabled = true;
+    this.coverageAbort = null;
 
     this.cacheDom();
     this.init();
@@ -29,14 +29,25 @@ class StreetLensApp {
     this.errorRetryBtn = document.getElementById('btn-error-retry');
     this.errorDismissBtn = document.getElementById('btn-error-dismiss');
     this.streetlensToggleBtn = document.getElementById('btn-toggle-streetlens');
-    this.simulationToggle = document.getElementById('toggle-simulation-mode');
+    this.connectMapillaryBtn = document.getElementById('btn-empty-connect-mapillary');
     this.themeToggleBtn = document.getElementById('btn-toggle-theme');
     this.quickCityButtons = document.querySelectorAll('[data-city-id]');
     this.activeCityLabel = document.getElementById('current-city-label');
+
+    // Mapillary UI Elements
+    this.mapillaryModal = document.getElementById('mapillary-modal');
+    this.mapillaryOpenBtn = document.getElementById('btn-open-mapillary-modal');
+    this.mapillaryCloseBtn = document.getElementById('mapillary-modal-close-btn');
+    this.mapillaryTokenForm = document.getElementById('mapillary-token-form');
+    this.mapillaryTokenInput = document.getElementById('mapillary-token-input');
+    this.mapillaryClearBtn = document.getElementById('btn-clear-mapillary-token');
+    this.mapillaryHeaderStatus = document.getElementById('mapillary-header-status');
+    this.mapillaryFeedback = document.getElementById('mapillary-feedback');
   }
 
   async init() {
     this.setupTheme();
+    this.updateMapillaryStatusDisplay();
     this.bindGlobalEvents();
 
     try {
@@ -45,7 +56,8 @@ class StreetLensApp {
         center: [51.5015, -0.1255],
         zoom: 16,
         onMapClick: (lat, lon) => this.handleMapClick(lat, lon),
-        onMarkerClick: (frame) => this.selectFrame(frame)
+        onMarkerClick: (frame) => this.selectFrame(frame, false),
+        onViewChange: (view) => this.loadCoverage(view)
       });
 
       // 2. Initialize Street-Level Viewer
@@ -56,7 +68,14 @@ class StreetLensApp {
         },
         onFrameChange: (frameId) => {
           const target = StreetLensAPI.getFrameById(frameId);
-          if (target) this.selectFrame(target);
+          if (target) {
+            // Stepping along a sequence: reuse the street name instead of re-geocoding every frame
+            const cur = this.viewer.currentFrame;
+            if (cur && cur.addressResolved && !target.addressResolved && cur.sequenceId === target.sequenceId) {
+              MapillaryService.applyAddress(target, { ...cur, locality: cur.suburb });
+            }
+            this.selectFrame(target);
+          }
         },
         onRequestCoverage: () => {
           if (this.viewer && this.viewer.currentFrame) {
@@ -74,14 +93,12 @@ class StreetLensApp {
         onRequestCoverageSubmit: (payload) => this.handleCoverageSubmission(payload)
       });
 
-      // 4. Fetch initial street-level imagery dataset via Fetch API
+      // 4. Fetch featured locations via Fetch API
       await this.loadDataset();
 
-      // 5. Select default initial frame (London Westminster)
-      const initialFrame = StreetLensAPI.getFrameById('lon_01');
-      if (initialFrame) {
-        this.selectFrame(initialFrame, false);
-      }
+      // 5. Load live Mapillary imagery for the starting location (London Westminster)
+      await this.showLocation(51.5015, -0.1255, { silent: true });
+      this.loadCoverage({ bbox: this.currentBbox(), zoom: this.map.map.getZoom() });
 
     } catch (error) {
       console.error('Initialization error:', error);
@@ -93,7 +110,6 @@ class StreetLensApp {
     try {
       this.hideGlobalError();
       this.dataset = await StreetLensAPI.loadStreetImagery();
-      this.map.renderCoverage(this.dataset);
     } catch (err) {
       this.showGlobalError(`Dataset loading error: ${err.message}`, () => this.loadDataset());
     }
@@ -114,20 +130,10 @@ class StreetLensApp {
 
         if (!this.streetLensEnabled) {
           this.viewer.showEmptyState('StreetLens mode is currently paused. Toggle StreetLens on to inspect street photos.');
-        } else if (this.viewer.currentFrame) {
-          this.viewer.displayFrame(this.viewer.currentFrame);
+        } else {
+          if (this.viewer.currentFrame) this.viewer.displayFrame(this.viewer.currentFrame);
+          this.loadCoverage({ bbox: this.currentBbox(), zoom: this.map.map.getZoom() });
         }
-      });
-    }
-
-    // 2. Simulation Mode Toggle (Strict survey vs Universal demo)
-    if (this.simulationToggle) {
-      this.simulationToggle.addEventListener('change', (e) => {
-        this.simulationMode = e.target.checked;
-        const msg = this.simulationMode
-          ? 'Simulation Mode enabled: Click anywhere worldwide to generate a ground perspective preview.'
-          : 'Strict Coverage Mode enabled: Only surveyed OpenStreetMap/Mapillary camera points will display.';
-        this.formManager.showToast('Mode Updated', msg, 'info');
       });
     }
 
@@ -155,8 +161,33 @@ class StreetLensApp {
       this.formManager.showToast('Network Restored', 'Back online. Geocoding services active.', 'success');
     });
     window.addEventListener('offline', () => {
-      this.showGlobalError('You are currently offline. Live Nominatim geocoding requires an internet connection.');
+      this.showGlobalError('You are currently offline. Street photos (Mapillary) and geocoding (Nominatim) need an internet connection.');
     });
+
+    // 7. Mapillary API Modal Events
+    if (this.mapillaryOpenBtn) {
+      this.mapillaryOpenBtn.addEventListener('click', () => this.openMapillaryModal());
+    }
+    if (this.mapillaryCloseBtn) {
+      this.mapillaryCloseBtn.addEventListener('click', () => this.closeMapillaryModal());
+    }
+    if (this.mapillaryModal) {
+      this.mapillaryModal.addEventListener('click', (e) => {
+        if (e.target === this.mapillaryModal) this.closeMapillaryModal();
+      });
+    }
+    if (this.mapillaryTokenForm) {
+      this.mapillaryTokenForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.saveMapillaryToken();
+      });
+    }
+    if (this.mapillaryClearBtn) {
+      this.mapillaryClearBtn.addEventListener('click', () => this.clearMapillaryToken());
+    }
+    if (this.connectMapillaryBtn) {
+      this.connectMapillaryBtn.addEventListener('click', () => this.openMapillaryModal());
+    }
   }
 
   /**
@@ -167,35 +198,105 @@ class StreetLensApp {
       this.formManager.showToast('StreetLens Off', 'Enable StreetLens in the header to view ground photos.', 'warning');
       return;
     }
+    await this.showLocation(lat, lon);
+  }
+
+  /**
+   * Find the nearest Mapillary photo to a coordinate and show it (or an empty / token state).
+   */
+  async showLocation(lat, lon, { silent = false } = {}) {
+    if (!MapillaryService.hasToken()) {
+      this.map.setActiveCameraPosition(lat, lon, 0);
+      this.viewer.showEmptyState(
+        'Street-level photos come from Mapillary. Connect a free Mapillary client token to start browsing.',
+        { needsToken: true }
+      );
+      return;
+    }
 
     this.viewer.showLoading(true);
 
     try {
-      // Fetch reverse geocode information using OpenStreetMap Nominatim API
       const addressInfo = await StreetLensAPI.reverseGeocode(lat, lon);
+      const result = await MapillaryService.findNearby(lat, lon, addressInfo, 1.5);
 
-      // Check if there is an existing surveyed frame within 1.5 km
-      const nearest = StreetLensAPI.findNearestFrame(lat, lon, 1.5);
-
-      if (nearest) {
-        this.selectFrame(nearest.frame);
-        this.formManager.showToast('Street Camera Found', `Viewing survey at ${nearest.frame.streetName} (${nearest.distanceMeters}m away)`, 'info');
-      } else if (this.simulationMode) {
-        // Universal demo mode: generate simulated ground perspective
-        const simFrame = StreetLensAPI.generateSimulatedFrame(lat, lon, addressInfo);
-        this.selectFrame(simFrame);
+      if (result) {
+        this.selectFrame(result.nearest, false);
+        if (!silent) {
+          this.formManager.showToast(
+            'Street Photo Found',
+            `${addressInfo.streetName}: nearest Mapillary photo is ${result.distanceMeters} m away (${result.sequence.length} in sequence)`,
+            'success'
+          );
+        }
       } else {
-        // Empty state: No ground imagery found in this area
         this.map.setActiveCameraPosition(lat, lon, 0);
         this.viewer.showEmptyState(
-          `No ground-level imagery available within 1.5 km of "${addressInfo.streetName}". StreetLens relies on community surveys and Mapillary open imagery.`
+          `No Mapillary photos within 1.5 km of "${addressInfo.streetName}". Try a main road, or add coverage by capturing with the Mapillary app.`
         );
       }
     } catch (err) {
-      console.error('Error handling map click:', err);
-      this.viewer.showEmptyState('An error occurred while inspecting this location.');
+      console.error('Error loading Mapillary imagery:', err);
+      const isAuth = err instanceof MapillaryError && (err.status === 400 || err.status === 401 || err.status === 403);
+      if (isAuth) {
+        this.viewer.showEmptyState(
+          `Mapillary rejected the token (${err.message}). Check it and save it again.`,
+          { needsToken: true }
+        );
+      } else {
+        this.viewer.showEmptyState(`Could not load Mapillary imagery: ${err.message}`);
+        this.showGlobalError(`Mapillary error: ${err.message}`, () => this.showLocation(lat, lon, { silent }));
+      }
     } finally {
       this.viewer.showLoading(false);
+    }
+  }
+
+  currentBbox() {
+    const b = this.map.map.getBounds();
+    return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+  }
+
+  /**
+   * Draw Mapillary coverage (sequence lines + photo dots) for the visible map area.
+   * Only at zoom >= 15 so the request stays small; cancelled when the view changes again.
+   */
+  async loadCoverage({ bbox, zoom }) {
+    if (!this.streetLensEnabled || !MapillaryService.hasToken()) return;
+
+    if (this.coverageAbort) this.coverageAbort.abort();
+
+    if (zoom < 15) {
+      this.map.clearCoverage();
+      return;
+    }
+
+    // Mapillary rejects very large bboxes; shrink around the centre if needed
+    let [minLon, minLat, maxLon, maxLat] = bbox;
+    const maxArea = 0.008;
+    const area = (maxLon - minLon) * (maxLat - minLat);
+    if (area > maxArea) {
+      const k = Math.sqrt(maxArea / area);
+      const cLon = (minLon + maxLon) / 2;
+      const cLat = (minLat + maxLat) / 2;
+      const hw = ((maxLon - minLon) / 2) * k;
+      const hh = ((maxLat - minLat) / 2) * k;
+      [minLon, minLat, maxLon, maxLat] = [cLon - hw, cLat - hh, cLon + hw, cLat + hh];
+    }
+
+    this.coverageAbort = new AbortController();
+    const { signal } = this.coverageAbort;
+
+    try {
+      const raw = await MapillaryService.fetchImagesInBbox([minLon, minLat, maxLon, maxLat], { limit: 400, signal });
+      if (signal.aborted) return;
+      const frames = raw.map(item => MapillaryService.toFrame(item)).filter(Boolean);
+      const sequences = MapillaryService.buildSequences(frames);
+      StreetLensAPI.cacheFrames(frames);
+      this.map.renderCoverage(sequences);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.warn('Mapillary coverage layer:', err.message);
     }
   }
 
@@ -206,17 +307,23 @@ class StreetLensApp {
     if (!frame) return;
 
     if (panMap) {
-      this.map.flyTo(frame.lat, frame.lon, 16);
+      this.map.flyTo(frame.lat, frame.lon, Math.max(this.map.map.getZoom(), 16));
     }
 
     this.map.activeFrameId = frame.id;
     this.map.setActiveCameraPosition(frame.lat, frame.lon, frame.heading || 0);
     this.viewer.displayFrame(frame);
 
-    // Highlight matching marker in DOM if present
-    document.querySelectorAll('.streetlens-marker-icon').forEach(elem => {
-      elem.classList.toggle('is-active', elem.getAttribute('data-frame-id') === frame.id);
-    });
+    // Photos opened from the coverage layer have no street name yet; resolve it in the background
+    if (!frame.addressResolved) {
+      StreetLensAPI.reverseGeocode(frame.lat, frame.lon).then(info => {
+        if (!info || info.streetName === 'Map Coordinate') return;
+        MapillaryService.applyAddress(frame, info);
+        if (this.viewer.currentFrame && this.viewer.currentFrame.id === frame.id) {
+          this.viewer.displayFrame(frame);
+        }
+      });
+    }
   }
 
   /**
@@ -282,10 +389,8 @@ class StreetLensApp {
     // Fly to city center
     this.map.flyTo(city.center[0], city.center[1], city.zoom || 16);
 
-    // Select the first frame in that city
-    if (city.frames && city.frames.length > 0) {
-      this.selectFrame(city.frames[0]);
-    }
+    // Load live Mapillary imagery at the city's featured spot
+    this.showLocation(city.center[0], city.center[1]);
   }
 
   /**
@@ -301,6 +406,82 @@ class StreetLensApp {
     } catch (e) {
       // Ignore localStorage issues
     }
+  }
+
+  // -------------------------------------------------------------
+  // MAPILLARY MODAL & TOKEN MANAGEMENT
+  // -------------------------------------------------------------
+  openMapillaryModal() {
+    if (!this.mapillaryModal) return;
+    if (this.mapillaryTokenInput) {
+      this.mapillaryTokenInput.value = MapillaryService.getToken();
+    }
+    if (this.mapillaryFeedback) {
+      this.mapillaryFeedback.classList.add('hidden');
+      this.mapillaryFeedback.textContent = '';
+    }
+    this.mapillaryModal.classList.remove('hidden');
+    if (this.mapillaryTokenInput) this.mapillaryTokenInput.focus();
+  }
+
+  closeMapillaryModal() {
+    if (this.mapillaryModal) {
+      this.mapillaryModal.classList.add('hidden');
+    }
+  }
+
+  saveMapillaryToken() {
+    const val = this.mapillaryTokenInput ? this.mapillaryTokenInput.value.trim() : '';
+    if (!val) {
+      this.showMapillaryFeedback('Please enter a valid Mapillary Client Token starting with MLY|', 'error');
+      return;
+    }
+
+    if (!val.startsWith('MLY|') && val.length < 15) {
+      this.showMapillaryFeedback('Mapillary v4 client tokens typically begin with "MLY|". Please check your token format.', 'warning');
+    }
+
+    MapillaryService.setToken(val);
+    this.updateMapillaryStatusDisplay();
+    this.closeMapillaryModal();
+    this.formManager.showToast('Mapillary Connected', 'Loading street photos for the current view.', 'success');
+    const c = this.map.map.getCenter();
+    this.showLocation(c.lat, c.lng, { silent: true });
+    this.loadCoverage({ bbox: this.currentBbox(), zoom: this.map.map.getZoom() });
+  }
+
+  clearMapillaryToken() {
+    MapillaryService.setToken('');
+    if (this.mapillaryTokenInput) this.mapillaryTokenInput.value = '';
+    this.updateMapillaryStatusDisplay();
+    this.closeMapillaryModal();
+    this.map.clearCoverage();
+    const c = this.map.map.getCenter();
+    this.showLocation(c.lat, c.lng, { silent: true });
+    this.formManager.showToast('Mapillary Token Removed', MapillaryService.hasToken()
+      ? 'Using the default token from config.js.'
+      : 'No token set: street photos are unavailable until you reconnect.', 'info');
+  }
+
+  updateMapillaryStatusDisplay() {
+    if (!this.mapillaryHeaderStatus) return;
+    const has = MapillaryService.hasToken();
+    if (has) {
+      this.mapillaryHeaderStatus.textContent = 'Connected';
+      this.mapillaryHeaderStatus.classList.add('is-active');
+      if (this.mapillaryOpenBtn) this.mapillaryOpenBtn.classList.add('is-active');
+    } else {
+      this.mapillaryHeaderStatus.textContent = 'Not connected';
+      this.mapillaryHeaderStatus.classList.remove('is-active');
+      if (this.mapillaryOpenBtn) this.mapillaryOpenBtn.classList.remove('is-active');
+    }
+  }
+
+  showMapillaryFeedback(msg, type = 'info') {
+    if (!this.mapillaryFeedback) return;
+    this.mapillaryFeedback.className = `form-feedback feedback-${type}`;
+    this.mapillaryFeedback.textContent = msg;
+    this.mapillaryFeedback.classList.remove('hidden');
   }
 
   // -------------------------------------------------------------

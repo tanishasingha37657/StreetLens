@@ -1,15 +1,19 @@
 /**
  * StreetLens API Layer
- * Handles all Fetch API operations, JSON data extraction, Nominatim geocoding,
- * reverse geocoding, spatial nearest-neighbor search, and error management.
+ * Handles all Fetch API operations: the featured-locations JSON, Nominatim
+ * geocoding / reverse geocoding, live Mapillary street-level imagery, and
+ * error management.
  */
+
+import { MAPILLARY_CLIENT_TOKEN } from './config.js';
 
 export const StreetLensAPI = {
   dataCache: null,
-  allFrames: [],
+  /** Mapillary frames seen so far, keyed by frame id (needed for prev/next stepping). */
+  frameCache: new Map(),
 
   /**
-   * Fetch the local StreetLens ground-level imagery dataset.
+   * Fetch the featured-locations JSON (city centres for the quick-jump buttons).
    * Demonstrates Fetch API, JSON parsing, and AbortController timeout handling.
    */
   async loadStreetImagery() {
@@ -27,33 +31,17 @@ export const StreetLensAPI = {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`Failed to load street imagery data (HTTP ${response.status}: ${response.statusText})`);
+        throw new Error(`Failed to load featured locations (HTTP ${response.status}: ${response.statusText})`);
       }
 
       const json = await response.json();
       this.dataCache = json;
 
-      // Flatten all frames for rapid spatial searching
-      this.allFrames = [];
-      if (json.cities && Array.isArray(json.cities)) {
-        json.cities.forEach(city => {
-          if (city.frames && Array.isArray(city.frames)) {
-            city.frames.forEach(frame => {
-              this.allFrames.push({
-                ...frame,
-                cityId: city.id,
-                cityName: city.name
-              });
-            });
-          }
-        });
-      }
-
       return json;
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        throw new Error('Request timed out while loading street imagery dataset.');
+        throw new Error('Request timed out while loading featured locations.');
       }
       throw error;
     }
@@ -182,76 +170,218 @@ export const StreetLensAPI = {
   },
 
   /**
-   * Find the closest street-level imagery frame to the given coordinates.
+   * Remember frames so sequence stepping (prev / next) can look them up by id.
    */
-  findNearestFrame(lat, lon, maxDistanceKm = 1.5) {
-    if (!this.allFrames || this.allFrames.length === 0) return null;
-
-    let nearest = null;
-    let minDistance = Infinity;
-
-    for (const frame of this.allFrames) {
-      const dist = this.calculateDistanceKm(lat, lon, frame.lat, frame.lon);
-      if (dist < minDistance) {
-        minDistance = dist;
-        nearest = frame;
+  cacheFrames(frames) {
+    frames.forEach(f => {
+      const old = this.frameCache.get(f.id);
+      // Keep an address we already resolved for this photo
+      if (old && old.addressResolved && !f.addressResolved) {
+        MapillaryService.applyAddress(f, old);
       }
-    }
-
-    if (nearest && minDistance <= maxDistanceKm) {
-      return {
-        frame: nearest,
-        distanceKm: minDistance,
-        distanceMeters: Math.round(minDistance * 1000)
-      };
-    }
-
-    return null;
+      this.frameCache.set(f.id, f);
+    });
   },
 
   /**
    * Retrieve a specific frame by its unique ID.
    */
   getFrameById(frameId) {
-    return this.allFrames.find(f => f.id === frameId) || null;
+    return this.frameCache.get(frameId) || null;
+  }
+};
+
+/**
+ * Mapillary v4 Integration Service
+ * The only source of street-level imagery in StreetLens. Talks to the Mapillary
+ * Graph API (https://graph.mapillary.com/images) from the browser.
+ */
+const MAPILLARY_TOKEN_KEY = 'streetlens_mapillary_token';
+const MAPILLARY_FIELDS = [
+  'id', 'computed_geometry', 'geometry', 'compass_angle', 'computed_compass_angle',
+  'captured_at', 'creator', 'sequence', 'is_pano', 'make', 'model',
+  'thumb_1024_url', 'thumb_2048_url'
+].join(',');
+
+/** Error carrying the HTTP status so the UI can tell "bad token" from "no coverage". */
+export class MapillaryError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.name = 'MapillaryError';
+    this.status = status;
+  }
+}
+
+export const MapillaryService = {
+  /** A token saved from the in-app dialog wins over the one in js/config.js. */
+  getToken() {
+    let saved = '';
+    try { saved = localStorage.getItem(MAPILLARY_TOKEN_KEY) || ''; } catch (e) { /* storage blocked */ }
+    return saved || MAPILLARY_CLIENT_TOKEN || '';
+  },
+
+  setToken(token) {
+    try {
+      if (token && typeof token === 'string' && token.trim().length > 0) {
+        localStorage.setItem(MAPILLARY_TOKEN_KEY, token.trim());
+      } else {
+        localStorage.removeItem(MAPILLARY_TOKEN_KEY);
+      }
+    } catch (e) { /* storage blocked */ }
+  },
+
+  hasToken() {
+    const t = this.getToken();
+    return Boolean(t && t.length > 5);
+  },
+
+  /** Build a "minLon,minLat,maxLon,maxLat" bbox string around a point. */
+  bboxAround(lat, lon, radiusKm) {
+    const latDelta = radiusKm / 111.32;
+    const lonDelta = radiusKm / (111.32 * Math.max(Math.cos(lat * Math.PI / 180), 0.01));
+    return [lon - lonDelta, lat - latDelta, lon + lonDelta, lat + latDelta];
   },
 
   /**
-   * Generate a simulated street perspective for locations where ground surveys haven't yet taken place.
-   * Enables seamless demonstration of the StreetLens interface anywhere on the planet.
+   * Low-level call: raw Mapillary image records inside a bbox [minLon, minLat, maxLon, maxLat].
+   * Pass an AbortSignal to cancel (used for the map-viewport coverage layer).
    */
-  generateSimulatedFrame(lat, lon, addressInfo) {
-    const sampleImages = [
-      'https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?auto=format&fit=crop&w=1600&q=80',
-      'https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1600&q=80',
-      'https://images.unsplash.com/photo-1596176530529-78163a4f7af2?auto=format&fit=crop&w=1600&q=80',
-      'https://images.unsplash.com/photo-1542051841857-5f90071e7989?auto=format&fit=crop&w=1600&q=80',
-      'https://images.unsplash.com/photo-1534430480872-3498386e7856?auto=format&fit=crop&w=1600&q=80'
-    ];
+  async fetchImagesInBbox(bbox, { limit = 500, signal = null, timeoutMs = 9000 } = {}) {
+    const token = this.getToken();
+    if (!token) throw new MapillaryError('No Mapillary token configured.', 401);
 
-    // Pick deterministic image based on coordinate hash
-    const index = Math.abs(Math.floor((lat + lon) * 1000)) % sampleImages.length;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    if (signal) signal.addEventListener('abort', () => controller.abort(), { once: true });
+
+    try {
+      const url = `https://graph.mapillary.com/images?fields=${MAPILLARY_FIELDS}` +
+        `&bbox=${bbox.map(n => n.toFixed(6)).join(',')}&limit=${limit}` +
+        `&access_token=${encodeURIComponent(token)}`;
+      const res = await fetch(url, { signal: controller.signal });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `Mapillary service returned status ${res.status}`;
+        throw new MapillaryError(msg, res.status);
+      }
+
+      const json = await res.json();
+      return Array.isArray(json?.data) ? json.data : [];
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        if (signal?.aborted) throw err; // cancelled by caller, not a timeout
+        throw new MapillaryError('Mapillary request timed out. Please check your network connection.', 0);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
+
+  /** Attach a reverse-geocoded address (streetName / locality|suburb / city / country) to a frame. */
+  applyAddress(frame, info) {
+    if (!info) return frame;
+    frame.streetName = info.streetName || frame.streetName;
+    frame.suburb = info.locality || info.suburb || '';
+    frame.city = info.city || '';
+    frame.country = info.country || '';
+    frame.addressResolved = true;
+    return frame;
+  },
+
+  /** Convert one raw Mapillary record into a StreetLens frame (without prev/next links). */
+  toFrame(item) {
+    const coords = (item.computed_geometry || item.geometry)?.coordinates;
+    const imageUrl = item.thumb_2048_url || item.thumb_1024_url;
+    if (!coords || !imageUrl) return null;
+
+    const heading = item.computed_compass_angle ?? item.compass_angle ?? 0;
+    const device = [item.make, item.model].filter(Boolean).join(' ') ||
+      (item.is_pano ? '360° Camera' : 'Mapillary Camera');
 
     return {
-      id: `sim_${Date.now()}`,
-      sequenceId: 'simulated_seq',
+      id: `mly_${item.id}`,
+      mapillaryId: String(item.id),
+      sequenceId: item.sequence || `mly_seq_${item.id}`,
       sequenceIndex: 0,
-      lat,
-      lon,
-      heading: Math.floor(Math.random() * 360),
+      capturedMs: item.captured_at || 0,
+      lat: coords[1],
+      lon: coords[0],
+      heading: Math.round(((heading % 360) + 360) % 360),
       pitch: 0,
-      streetName: addressInfo.streetName || 'Roadside Perspective',
-      suburb: addressInfo.locality || '',
-      city: addressInfo.city || 'Regional Center',
-      country: addressInfo.country || 'Global',
-      capturedAt: 'Recent Community Survey (Simulated Preview)',
-      contributor: 'osm_open_community',
-      device: 'StreetLens Mobile Survey',
-      imageUrl: sampleImages[index],
+      isPano: Boolean(item.is_pano),
+      streetName: 'Mapillary Street Photo',
+      suburb: '',
+      city: '',
+      country: '',
+      addressResolved: false,
+      capturedAt: item.captured_at ? new Date(item.captured_at).toISOString().split('T')[0] : 'Unknown date',
+      contributor: item.creator?.username || 'mapillary_contributor',
+      device,
+      imageUrl,
       prevFrameId: null,
       nextFrameId: null,
-      isSimulated: true,
-      description: `Ground-level perspective of ${addressInfo.fullAddress || 'selected coordinate'}.`
+      isMapillary: true,
+      description: `Mapillary image ${item.id}`
     };
+  },
+
+  /**
+   * Group frames by Mapillary sequence, order each one by capture time and link
+   * prevFrameId / nextFrameId so the viewer can step along the road.
+   * Returns an array of sequences (each an array of frames).
+   */
+  buildSequences(frames) {
+    const bySeq = new Map();
+    frames.forEach(f => {
+      if (!bySeq.has(f.sequenceId)) bySeq.set(f.sequenceId, []);
+      bySeq.get(f.sequenceId).push(f);
+    });
+
+    const sequences = [];
+    bySeq.forEach(list => {
+      list.sort((a, b) => a.capturedMs - b.capturedMs);
+      list.forEach((f, i) => {
+        f.sequenceIndex = i;
+        f.prevFrameId = i > 0 ? list[i - 1].id : null;
+        f.nextFrameId = i < list.length - 1 ? list[i + 1].id : null;
+      });
+      sequences.push(list);
+    });
+    return sequences;
+  },
+
+  /**
+   * Find street-level imagery near a point. Searches progressively wider
+   * (150 m, 600 m, then maxRadiusKm) so a click on a street picks the photo
+   * actually on that street. Returns { frames, sequence, nearest, distanceMeters } where
+   * `sequence` is the ordered run of photos containing the nearest image, or
+   * null when Mapillary has no coverage in range.
+   */
+  async findNearby(lat, lon, addressInfo = null, maxRadiusKm = 1.5) {
+    const radii = [0.15, 0.6, maxRadiusKm].filter((r, i, a) => r <= maxRadiusKm && a.indexOf(r) === i);
+
+    for (const radius of radii) {
+      const raw = await this.fetchImagesInBbox(this.bboxAround(lat, lon, radius), { limit: 500 });
+      const frames = raw.map(item => this.toFrame(item)).filter(Boolean);
+      if (frames.length === 0) continue;
+
+      let nearest = null;
+      let best = Infinity;
+      frames.forEach(f => {
+        const d = StreetLensAPI.calculateDistanceKm(lat, lon, f.lat, f.lon);
+        if (d < best) { best = d; nearest = f; }
+      });
+
+      const sequences = this.buildSequences(frames);
+      const sequence = sequences.find(seq => seq.includes(nearest)) || [nearest];
+      // The geocoded street name describes the clicked street, i.e. this sequence only
+      sequence.forEach(f => this.applyAddress(f, addressInfo));
+      StreetLensAPI.cacheFrames(frames);
+
+      return { frames, sequence, nearest, distanceMeters: Math.round(best * 1000) };
+    }
+    return null;
   }
 };

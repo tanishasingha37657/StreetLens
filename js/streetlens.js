@@ -41,7 +41,8 @@ export class StreetLensViewer {
     this.nextBtn = document.getElementById('btn-next-frame');
     this.autoTourBtn = document.getElementById('btn-auto-tour');
     this.sequenceBadge = document.getElementById('sequence-badge');
-    this.simulatedBadge = document.getElementById('simulated-badge');
+    this.mapillaryLink = document.getElementById('meta-mapillary-link');
+    this.connectBtn = document.getElementById('btn-empty-connect-mapillary');
     this.fullscreenBtn = document.getElementById('btn-fullscreen-toggle');
     this.closeBtn = document.getElementById('btn-close-viewer');
   }
@@ -120,18 +121,19 @@ export class StreetLensViewer {
     if (this.streetNameElem) this.streetNameElem.textContent = frame.streetName || 'Ground-Level Perspective';
     if (this.locationMetaElem) {
       const locText = [frame.suburb, frame.city, frame.country].filter(Boolean).join(', ');
-      this.locationMetaElem.textContent = locText || 'OpenStreetMap Ground Location';
+      this.locationMetaElem.textContent = locText || 'Mapillary street-level photo';
     }
     if (this.captureDateElem) this.captureDateElem.textContent = frame.capturedAt || 'Recent Survey';
     if (this.contributorElem) this.contributorElem.textContent = `@${frame.contributor || 'osm_mapper'}`;
     if (this.deviceElem) this.deviceElem.textContent = frame.device || 'Spherical Camera';
 
-    // Show simulation tag if synthetic
-    if (this.simulatedBadge) {
-      if (frame.isSimulated) {
-        this.simulatedBadge.classList.remove('hidden');
+    // Link back to the photo on Mapillary (provenance / attribution)
+    if (this.mapillaryLink) {
+      if (frame.mapillaryId) {
+        this.mapillaryLink.href = `https://www.mapillary.com/app/?pKey=${encodeURIComponent(frame.mapillaryId)}&focus=photo`;
+        this.mapillaryLink.classList.remove('hidden');
       } else {
-        this.simulatedBadge.classList.add('hidden');
+        this.mapillaryLink.classList.add('hidden');
       }
     }
 
@@ -170,7 +172,11 @@ export class StreetLensViewer {
     }
   }
 
-  showEmptyState(customMessage = null) {
+  /**
+   * @param {string|null} customMessage  text for the empty state
+   * @param {{needsToken?: boolean}} opts  needsToken swaps the "request coverage" button for "connect Mapillary"
+   */
+  showEmptyState(customMessage = null, opts = {}) {
     this.stopAutoTour();
     this.showLoading(false);
     this.viewerSection.classList.add('hidden');
@@ -180,6 +186,15 @@ export class StreetLensViewer {
       const descElem = document.getElementById('empty-state-desc');
       if (descElem) descElem.textContent = customMessage;
     }
+
+    const titleElem = document.getElementById('empty-state-title');
+    if (titleElem) {
+      titleElem.textContent = opts.needsToken ? 'Connect Mapillary to see street photos' : 'No Ground-Level Imagery Available Here';
+    }
+
+    const requestBtn = document.getElementById('btn-empty-request-coverage');
+    if (requestBtn) requestBtn.classList.toggle('hidden', Boolean(opts.needsToken));
+    if (this.connectBtn) this.connectBtn.classList.toggle('hidden', !opts.needsToken);
   }
 
   updateNavigationControls() {

@@ -16,6 +16,8 @@ export class StreetLensMap {
     this.activeFrameId = null;
     this.onMapClickCallback = options.onMapClick || null;
     this.onMarkerClickCallback = options.onMarkerClick || null;
+    this.onViewChangeCallback = options.onViewChange || null;
+    this.viewChangeTimer = null;
     this.streetLensEnabled = true;
 
     this.initMap(options.center || [51.5015, -0.1255], options.zoom || 16);
@@ -49,6 +51,19 @@ export class StreetLensMap {
       }
     });
 
+    // Viewport changes (pan / zoom) -> debounced callback so the app can load Mapillary coverage
+    this.map.on('moveend', () => {
+      if (!this.onViewChangeCallback) return;
+      clearTimeout(this.viewChangeTimer);
+      this.viewChangeTimer = setTimeout(() => {
+        const b = this.map.getBounds();
+        this.onViewChangeCallback({
+          bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
+          zoom: this.map.getZoom()
+        });
+      }, 450);
+    });
+
     // Invalidate size on resize for seamless responsive layout
     window.addEventListener('resize', () => {
       this.map.invalidateSize();
@@ -56,73 +71,47 @@ export class StreetLensMap {
   }
 
   /**
-   * Render street-level coverage lines and camera markers on the OpenStreetMap
+   * Render Mapillary coverage: one glowing line per capture sequence plus a
+   * clickable dot for every photo. `sequences` is an array of ordered frame arrays.
    */
-  renderCoverage(dataset) {
+  renderCoverage(sequences) {
     this.clearCoverage();
-    if (!this.streetLensEnabled || !dataset || !dataset.cities) return;
+    if (!this.streetLensEnabled || !sequences) return;
 
-    dataset.cities.forEach(city => {
-      if (!city.frames || city.frames.length === 0) return;
-
-      // Draw street sequence route line (cyan-blue glowing polyline)
-      const latlngs = city.frames.map(f => [f.lat, f.lon]);
-      const line = L.polyline(latlngs, {
-        color: '#0284c7',
-        weight: 6,
-        opacity: 0.75,
-        lineCap: 'round',
-        lineJoin: 'round',
-        className: 'streetlens-polyline'
-      });
-      line.bindTooltip(`StreetLens Survey: ${city.featuredLocation || city.name}`, { sticky: true });
-      this.coverageLinesLayer.addLayer(line);
-
-      // Add individual frame markers
-      city.frames.forEach(frame => {
-        const marker = this.createFrameMarker(frame);
-        this.markersLayer.addLayer(marker);
-      });
-    });
-  }
-
-  /**
-   * Create an interactive camera marker for an imagery frame
-   */
-  createFrameMarker(frame) {
-    const isCurrent = frame.id === this.activeFrameId;
-    const iconHtml = `
-      <div class="streetlens-marker-icon ${isCurrent ? 'is-active' : ''}" data-frame-id="${frame.id}">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="marker-svg">
-          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-          <circle cx="12" cy="13" r="4"></circle>
-        </svg>
-      </div>
-    `;
-
-    const customIcon = L.divIcon({
-      html: iconHtml,
-      className: 'streetlens-div-icon',
-      iconSize: [28, 28],
-      iconAnchor: [14, 14]
-    });
-
-    const marker = L.marker([frame.lat, frame.lon], { icon: customIcon });
-
-    // Click event on camera marker (Meaningful JS Event)
-    marker.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      if (this.onMarkerClickCallback) {
-        this.onMarkerClickCallback(frame);
+    sequences.forEach(seq => {
+      if (seq.length > 1) {
+        const line = L.polyline(seq.map(f => [f.lat, f.lon]), {
+          color: '#05cb63',
+          weight: 5,
+          opacity: 0.6,
+          lineCap: 'round',
+          lineJoin: 'round',
+          interactive: false,
+          className: 'streetlens-polyline'
+        });
+        this.coverageLinesLayer.addLayer(line);
       }
-    });
 
-    marker.bindTooltip(`<b>${frame.streetName}</b><br><span style="font-size:11px;color:#64748b;">Click to view ground imagery</span>`, {
-      direction: 'top',
-      offset: [0, -10]
+      seq.forEach(frame => {
+        const dot = L.circleMarker([frame.lat, frame.lon], {
+          radius: 6,
+          color: '#ffffff',
+          weight: 2,
+          fillColor: '#05cb63',
+          fillOpacity: 0.95
+        });
+        // Click on a coverage dot (Meaningful JS Event)
+        dot.on('click', (e) => {
+          L.DomEvent.stopPropagation(e);
+          if (this.onMarkerClickCallback) this.onMarkerClickCallback(frame);
+        });
+        dot.bindTooltip(`<b>Mapillary</b> &middot; ${frame.capturedAt}<br><span style="font-size:11px;color:#64748b;">Click to view street photo</span>`, {
+          direction: 'top',
+          offset: [0, -6]
+        });
+        this.markersLayer.addLayer(dot);
+      });
     });
-
-    return marker;
   }
 
   /**
