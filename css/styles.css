@@ -534,25 +534,35 @@ a {
 }
 
 /* -------------------------------------------------------------
-   Side-by-Side Application Workspace (DOCX grid layout)
+   Side-by-Side Application Workspace
+   Two matching "cards" (map + viewer) on the app background.
    ------------------------------------------------------------- */
 .workspace-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
   height: calc(100vh - 64px - 65px - 40px);
   min-height: 540px;
   position: relative;
   background: var(--bg-app);
 }
 
-/* Left Panel: Map Container */
-.map-container-section {
+/* Shared card treatment for both panels */
+.map-container-section,
+.streetlens-panel-section {
   position: relative;
   height: 100%;
   width: 100%;
-  border-right: 1px solid var(--border-subtle);
+  min-height: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
 }
 
+/* Left Panel: Map Container */
 .osm-map {
   width: 100%;
   height: 100%;
@@ -630,30 +640,39 @@ a {
 
 /* -------------------------------------------------------------
    Right Panel: StreetLens Ground Viewer
+   The photo fills the whole card; the title block and the
+   capture metadata float over it as scrimmed overlays, mirroring
+   how the map fills its card with floating UI on top.
    ------------------------------------------------------------- */
 .streetlens-panel-section {
-  position: relative;
-  height: 100%;
   background: var(--bg-surface);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
 }
 
 .viewer-content {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   height: 100%;
 }
 
+/* Overlay: top (title, badges, actions) */
 .viewer-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-surface);
+  padding: 1rem 1.25rem 3rem;
+  background: linear-gradient(to bottom, rgba(15, 23, 42, 0.8), rgba(15, 23, 42, 0));
+  color: #ffffff;
+  border: 0;
+  pointer-events: none; /* let drag-to-pan pass through the scrim */
 }
+
+.viewer-header button { pointer-events: auto; }
 
 .location-badge-row {
   display: flex;
@@ -682,20 +701,22 @@ a {
 }
 
 .badge-outline {
-  border: 1px solid var(--border-strong);
-  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .street-name-title {
   font-size: 1.25rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: var(--text-primary);
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .location-subtext {
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: rgba(255, 255, 255, 0.78);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .viewer-actions {
@@ -703,11 +724,25 @@ a {
   gap: 0.35rem;
 }
 
-/* 360-Degree Interactive Viewport */
+/* Glass buttons so they read over any photo */
+.viewer-header .icon-btn-ghost {
+  color: #ffffff;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.viewer-header .icon-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+/* 360-Degree Interactive Viewport (fills the card) */
 .street-viewport {
-  position: relative;
-  flex: 1;
-  min-height: 320px;
+  position: absolute;
+  inset: 0;
+  min-height: 0;
   background: #0f172a;
   overflow: hidden;
   cursor: grab;
@@ -735,11 +770,11 @@ a {
   pointer-events: none;
 }
 
-/* Dynamic Compass & Heading Widget */
+/* Dynamic Compass & Heading Widget (sits below the title overlay) */
 .compass-widget {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: 7.25rem;
+  left: 1.25rem;
   z-index: 20;
   background: rgba(15, 23, 42, 0.75);
   backdrop-filter: blur(8px);
@@ -790,8 +825,8 @@ a {
 /* Drag to Rotate Hint */
 .drag-hint {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 7.25rem;
+  right: 1.25rem;
   z-index: 20;
   background: rgba(15, 23, 42, 0.65);
   backdrop-filter: blur(8px);
@@ -807,10 +842,10 @@ a {
   pointer-events: none;
 }
 
-/* Floating Sequence Navigation Controls */
+/* Floating Sequence Navigation Controls (sits above the metadata overlay) */
 .street-navigation-controls {
   position: absolute;
-  bottom: 1.25rem;
+  bottom: 5.5rem;
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
@@ -853,42 +888,60 @@ a {
   background: linear-gradient(135deg, #f59e0b, #d97706);
 }
 
-/* Metadata & Attribution Caption Footer */
+/* Overlay: bottom (capture metadata & attribution) */
 .viewer-attribution {
-  padding: 1rem 1.5rem;
-  background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  padding: 3rem 1.25rem 1rem;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.85), rgba(15, 23, 42, 0));
+  color: #ffffff;
+  border: 0;
+  pointer-events: none;
 }
+
+.viewer-attribution a { pointer-events: auto; }
 
 .meta-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  gap: 0.5rem 1.5rem;
 }
 
 .meta-item {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .meta-label {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   text-transform: uppercase;
-  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
 }
 
 .meta-val {
-  font-size: 0.825rem;
+  font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* Attribution text may be long (credit + link): let it wrap rather than clip */
+.meta-item:last-child .meta-val {
+  white-space: normal;
 }
 
 /* -------------------------------------------------------------
-   Empty State (DOCX requirement: <section role="status">)
+   Empty State
    ------------------------------------------------------------- */
 .empty-state {
   flex: 1;
@@ -897,6 +950,7 @@ a {
   justify-content: center;
   padding: 2.5rem 1.5rem;
   background: var(--bg-app);
+  overflow-y: auto;
 }
 
 .empty-state-card {
@@ -1095,6 +1149,54 @@ a {
   border-top: 32px solid rgba(245, 158, 11, 0.45);
   pointer-events: none;
   filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.5));
+}
+
+/* -------------------------------------------------------------
+   Leaflet Theming (tiles, controls, tooltips follow the design system)
+   ------------------------------------------------------------- */
+.leaflet-tile-pane {
+  filter: saturate(0.75) brightness(1.02);
+  transition: filter 0.3s;
+}
+
+[data-theme="dark"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6);
+}
+
+.leaflet-bar {
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: var(--shadow-md) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background: var(--bg-glass-card);
+  color: var(--text-primary);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom-color: var(--border-subtle);
+}
+
+.leaflet-bar a:last-child { border-bottom: none; }
+
+.leaflet-bar a:hover {
+  background: var(--osm-blue-light);
+  color: var(--osm-blue);
+}
+
+.leaflet-control-attribution {
+  background: var(--bg-glass) !important;
+  color: var(--text-muted) !important;
+  border-radius: var(--radius-sm) 0 0 0;
+}
+
+.leaflet-tooltip {
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
 }
 
 /* -------------------------------------------------------------
@@ -1394,15 +1496,6 @@ a {
     height: auto;
   }
 
-  .map-container-section {
-    border-right: none;
-    border-bottom: 1px solid var(--border-subtle);
-  }
-
-  .meta-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .quick-cities-nav {
     display: none;
   }
@@ -1426,8 +1519,21 @@ a {
     align-items: stretch;
   }
 
+  /* Keep the bottom overlay compact on small screens */
   .meta-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .meta-item:nth-child(3) {
+    display: none; /* hide camera model on phones */
+  }
+
+  .meta-item:last-child .meta-val {
+    white-space: nowrap;
+  }
+
+  .street-navigation-controls {
+    bottom: 6rem;
   }
 
   .app-footer {
@@ -1520,6 +1626,10 @@ a {
   box-shadow: 0 0 12px rgba(5, 203, 99, 0.4) !important;
 }
 
+/* ============================================================
+   VIEWER COLLAPSE / FULLSCREEN STATES
+   ============================================================ */
+
 /* Collapse: hide the viewer and let the map take the full width */
 .workspace-grid:has(.is-collapsed) {
   grid-template-columns: 1fr;
@@ -1534,4 +1644,6 @@ a {
   inset: 0;
   z-index: 900;
   height: 100vh;
+  border: 0;
+  border-radius: 0;
 }
