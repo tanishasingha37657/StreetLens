@@ -1520,3 +1520,18 @@ a {
   box-shadow: 0 0 12px rgba(5, 203, 99, 0.4) !important;
 }
 
+/* Collapse: hide the viewer and let the map take the full width */
+.workspace-grid:has(.is-collapsed) {
+  grid-template-columns: 1fr;
+}
+.streetlens-panel-section.is-collapsed {
+  display: none;
+}
+
+/* Fullscreen: viewer covers the whole window */
+.streetlens-panel-section.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  height: 100vh;
+}

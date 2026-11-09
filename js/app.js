@@ -33,6 +33,7 @@ class StreetLensApp {
     this.themeToggleBtn = document.getElementById('btn-toggle-theme');
     this.quickCityButtons = document.querySelectorAll('[data-city-id]');
     this.activeCityLabel = document.getElementById('current-city-label');
+    this.radiusSelect = document.getElementById('search-radius');
 
     // Mapillary UI Elements
     this.mapillaryModal = document.getElementById('mapillary-modal');
@@ -113,6 +114,24 @@ class StreetLensApp {
     } catch (err) {
       this.showGlobalError(`Dataset loading error: ${err.message}`, () => this.loadDataset());
     }
+  }
+
+  // -------------------------------------------------------------
+  // SURVEY RADIUS HELPERS
+  // -------------------------------------------------------------
+  /**
+   * Current survey radius (km) from the toolbar dropdown. Falls back to 1.5 km.
+   */
+  getSurveyRadiusKm() {
+    const value = this.radiusSelect ? parseFloat(this.radiusSelect.value) : NaN;
+    return Number.isFinite(value) && value > 0 ? value : 1.5;
+  }
+
+  /**
+   * Human-friendly radius label: 0.5 -> "500 m", 1.5 -> "1.5 km".
+   */
+  formatRadius(km) {
+    return km < 1 ? `${Math.round(km * 1000)} m` : `${km} km`;
   }
 
   bindGlobalEvents() {
@@ -203,6 +222,7 @@ class StreetLensApp {
 
   /**
    * Find the nearest Mapillary photo to a coordinate and show it (or an empty / token state).
+   * The search distance comes from the "Survey Radius" dropdown.
    */
   async showLocation(lat, lon, { silent = false } = {}) {
     if (!MapillaryService.hasToken()) {
@@ -216,9 +236,12 @@ class StreetLensApp {
 
     this.viewer.showLoading(true);
 
+    const radiusKm = this.getSurveyRadiusKm();
+    const radiusLabel = this.formatRadius(radiusKm);
+
     try {
       const addressInfo = await StreetLensAPI.reverseGeocode(lat, lon);
-      const result = await MapillaryService.findNearby(lat, lon, addressInfo, 1.5);
+      const result = await MapillaryService.findNearby(lat, lon, addressInfo, radiusKm);
 
       if (result) {
         this.selectFrame(result.nearest, false);
@@ -232,7 +255,7 @@ class StreetLensApp {
       } else {
         this.map.setActiveCameraPosition(lat, lon, 0);
         this.viewer.showEmptyState(
-          `No Mapillary photos within 1.5 km of "${addressInfo.streetName}". Try a main road, or add coverage by capturing with the Mapillary app.`
+          `No Mapillary photos within ${radiusLabel} of "${addressInfo.streetName}". Try a larger survey radius or a main road, or add coverage by capturing with the Mapillary app.`
         );
       }
     } catch (err) {
@@ -331,7 +354,7 @@ class StreetLensApp {
    */
   async handleSearch(params) {
     this.hideGlobalError();
-
+    
     if (params.isCoordinates) {
       // Coordinate search
       this.map.flyTo(params.lat, params.lon, 16);
@@ -506,6 +529,7 @@ class StreetLensApp {
 
     if (retryCallback && this.errorRetryBtn) {
       this.errorRetryBtn.classList.remove('hidden');
+
       this.errorRetryBtn.onclick = () => {
         this.hideGlobalError();
         retryCallback();
